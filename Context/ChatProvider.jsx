@@ -2,12 +2,51 @@ import { createContext, useState, useContext } from "react";
 
 const ChatContext = createContext();
 
+const INTENTS = {
+  'cost_optimizer': {
+    description: 'Budgeting, expense tracking, financial optimization',
+    route: '/cost-analysis' // Your app's route
+  },
+  'credit_score': {
+    description: 'Credit score checks and loan eligibility',
+    route: '/credit-score'
+  },
+  'credit_help': {
+    description: 'Credit improvement strategies',
+    route: '/credit-help'
+  },
+  'health_score': {
+    description: 'Physical well-being and fitness metrics',
+    route: '/health-dashboard'
+  }
+};
+
 export const ChatProvider = ({ children }) => {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [messages, setMessages] = useState([
     {
       role: "system",
-      content: "I need you to act as an intent recognizer with four intents: 'cost optimizer', 'credit score checker', 'credit expert', and 'health score'. \n\n- 'cost optimizer' is used when a person wants to know their expenses or check their balance sheet.\n- 'credit score checker' helps the person know their credit score for loan eligibility.\n- 'credit expert' helps strategize how to increase a credit score.\n- 'health score' is about checking overall well-being or fitness.\n\nI will provide a text, and you should return only **one word** based on the intent: 'cost optimizer', 'credit score checker', 'credit expert', or 'health score'.\n\n### Important Rule:\nIf the text is ambiguous (e.g., it only asks for 'score' without specifying which one), **instead of classifying**, return:\n**chat: Which score do you want to check? Credit score or health score?**\n\n"
+      content: `You are an advanced intent classifier. Follow these rules STRICTLY:
+
+1. Analyze user messages against these intents:
+${Object.entries(INTENTS).map(([key, val]) => `- ${key}: ${val.description}`).join('\n')}
+
+2. Respond ONLY in this JSON format:
+{
+  "intent": "${Object.keys(INTENTS).join('" | "')}" | null,
+  "clarification": "string" | null
+}
+
+3. Use "clarification" ONLY when:
+   - Message matches multiple intents
+   - Needs more information
+   - Contains ambiguous terms like "score"
+
+4. Never reveal intent names to users
+
+Examples:
+User: "How to save money?" → {"intent": "cost_optimizer", "clarification": null}
+User: "My score?" → {"intent": null, "clarification": "Which score: credit or health?"}`
     }
   ]);
   function extractResponse(text) {
@@ -23,21 +62,28 @@ export const ChatProvider = ({ children }) => {
     setMessages(updatedMessages);
     
     try {
-      const response = await fetch("http://localhost:12345/api/generate", {
+      const response = await fetch("http://localhost:12345/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "deepseek-r1:1.5b",
+          model: "phi3",
           stream: false,
-          messages: updatedMessages
+          format: "json",
+          messages: updatedMessages,
+          options: { temperature: 0.2 }
         })
       });
 
       const data = await response.json();
+      console.log(data)
 
-      if (data && data.content) {
+      if (data) {
         var botans=extractResponse(data.content);
-        setMessages([...updatedMessages, { role: "assistant", content: botans }]);
+        setMessages(prev => [...prev, {
+          role: "assistant",
+          content: clarification || "Redirecting to your requested feature...",
+          meta: { intent }
+        }]);
       }
     } catch (error) {
       console.error("Error fetching response:", error);
